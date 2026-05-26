@@ -4,7 +4,18 @@ from pathlib import Path
 from datetime import datetime
 
 # Add project root to python path to allow absolute imports
-sys.path.append(str(Path(__file__).parent.parent.parent))
+project_root = Path(__file__).parent.parent.parent
+sys.path.append(str(project_root))
+
+# Zero-dependency .env loader for secure local configuration
+env_path = project_root / '.env'
+if env_path.exists():
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, val = line.split('=', 1)
+                os.environ[key.strip()] = val.strip().strip('"').strip("'")
 
 from src.models.database import DatabaseManager
 from src.models.article import Subscriber, Article
