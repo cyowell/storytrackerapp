@@ -348,3 +348,51 @@ select optgroup {
         transform: translateY(0);
     }
 }
+
+/* Connection Status Banner */
+.connection-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    border-radius: 12px;
+    font-size: 13.5px;
+    line-height: 1.5;
+    margin-bottom: 25px;
+    border: 1px solid transparent;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.banner-status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.connection-banner.online {
+    background-color: var(--success-bg);
+    border-color: var(--success-border);
+    color: var(--success-color);
+}
+
+.connection-banner.online .banner-status-dot {
+    background-color: var(--success-color);
+    box-shadow: 0 0 8px var(--success-color);
+}
+
+.connection-banner.offline {
+    background-color: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.25);
+    color: #f59e0b;
+}
+
+.connection-banner.offline .banner-status-dot {
+    background-color: #f59e0b;
+    box-shadow: 0 0 8px #f59e0b;
+}
+
+/* Day group styling */
+#day-group {
+    transition: opacity 0.3s ease;
+}

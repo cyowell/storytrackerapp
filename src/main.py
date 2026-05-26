@@ -34,6 +34,8 @@ class SubscriptionRequest(BaseModel):
     email: EmailStr
     issue_area: str
     cadence: str = "weekly"  # "daily", "weekly", "biweekly", "monthly"
+    preferred_day: str = "Monday"
+    preferred_hour: int = 9
 
 
 # Available issue areas and subcategories tree matching the portal structure
@@ -140,7 +142,9 @@ def subscribe_user(payload: SubscriptionRequest):
     success = db.add_subscriber(
         email=payload.email,
         issue_area=payload.issue_area,
-        cadence=payload.cadence.lower()
+        cadence=payload.cadence.lower(),
+        preferred_day=payload.preferred_day,
+        preferred_hour=payload.preferred_hour
     )
 
     if not success:
@@ -155,7 +159,9 @@ def subscribe_user(payload: SubscriptionRequest):
         "data": {
             "email": payload.email,
             "issue_area": payload.issue_area,
-            "cadence": payload.cadence
+            "cadence": payload.cadence,
+            "preferred_day": payload.preferred_day,
+            "preferred_hour": payload.preferred_hour
         }
     }
 

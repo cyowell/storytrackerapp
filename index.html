@@ -25,6 +25,14 @@
             <p class="subtitle">Set up customized email digests on your favorite solutions journalism topics, delivered exactly when you want them.</p>
         </header>
 
+        <!-- Connection Status Banner -->
+        <div id="connection-banner" class="connection-banner offline">
+            <div class="banner-status-dot"></div>
+            <div class="banner-text">
+                <strong>Local API Backend Offline:</strong> Form will use offline topics. Live signup requires starting the Python API server.
+            </div>
+        </div>
+
         <section class="card glass">
             <form id="signup-form" class="form">
                 <div class="form-group">
@@ -50,12 +58,55 @@
                         <label for="cadence">Delivery Cadence</label>
                         <div class="input-wrapper">
                             <select id="cadence" name="cadence" required>
-                                <option value="weekly">Weekly (Every Tuesday)</option>
-                                <option value="daily">Daily (Early Morning)</option>
-                                <option value="biweekly">Bi-weekly (Every 2 Weeks)</option>
+                                <option value="weekly" selected>Weekly</option>
+                                <option value="daily">Daily</option>
+                                <option value="biweekly">Bi-weekly</option>
                                 <option value="monthly">Monthly Digest</option>
                             </select>
                             <span class="input-icon">📅</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Custom timing fields -->
+                <div class="form-row" id="timing-row">
+                    <div class="form-group" id="day-group">
+                        <label for="preferred-day">Preferred Day of Delivery</label>
+                        <div class="input-wrapper">
+                            <select id="preferred-day" name="preferred_day">
+                                <option value="Monday" selected>Monday</option>
+                                <option value="Tuesday">Tuesday</option>
+                                <option value="Wednesday">Wednesday</option>
+                                <option value="Thursday">Thursday</option>
+                                <option value="Friday">Friday</option>
+                                <option value="Saturday">Saturday</option>
+                                <option value="Sunday">Sunday</option>
+                            </select>
+                            <span class="input-icon">☀️</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="preferred-hour">Preferred Hour (Local Time)</label>
+                        <div class="input-wrapper">
+                            <select id="preferred-hour" name="preferred_hour" required>
+                                <option value="6">6:00 AM (Early Morning)</option>
+                                <option value="7">7:00 AM</option>
+                                <option value="8">8:00 AM</option>
+                                <option value="9" selected>9:00 AM (Standard Morning)</option>
+                                <option value="10">10:00 AM</option>
+                                <option value="11">11:00 AM</option>
+                                <option value="12">12:00 PM (Noon)</option>
+                                <option value="13">1:00 PM</option>
+                                <option value="14">2:00 PM</option>
+                                <option value="15">3:00 PM</option>
+                                <option value="16">4:00 PM</option>
+                                <option value="17">5:00 PM (End of Day)</option>
+                                <option value="18">6:00 PM</option>
+                                <option value="19">7:00 PM</option>
+                                <option value="20">8:00 PM (Evening)</option>
+                            </select>
+                            <span class="input-icon">⏰</span>
                         </div>
                     </div>
                 </div>
@@ -82,24 +133,57 @@
     </main>
 
     <script>
-        // API Base URL - Update this to your deployed API backend address when hosting
+        // API Base URL - Point to your running local/remote FastAPI server
         const API_BASE_URL = 'http://localhost:8000';
 
         const signupForm = document.getElementById('signup-form');
         const submitBtn = document.getElementById('submit-btn');
         const issueAreaSelect = document.getElementById('issue-area');
         const statusMessage = document.getElementById('status-message');
+        const connectionBanner = document.getElementById('connection-banner');
+        
+        const cadenceSelect = document.getElementById('cadence');
+        const dayGroup = document.getElementById('day-group');
+        const preferredDaySelect = document.getElementById('preferred-day');
 
-        // Fallback options in case API backend is offline/unreachable
+        // Show/hide day selection dynamically based on chosen cadence
+        cadenceSelect.addEventListener('change', () => {
+            const val = cadenceSelect.value;
+            if (val === 'daily' || val === 'monthly') {
+                dayGroup.style.opacity = '0.4';
+                preferredDaySelect.disabled = true;
+            } else {
+                dayGroup.style.opacity = '1';
+                preferredDaySelect.disabled = false;
+            }
+        });
+
+        // Offline / Fallback tree listing all 24 issue areas with main subcategories
         const FALLBACK_ISSUES = {
-            "Agriculture & Food Systems": ["Food security", "Community food systems", "Food sovereignty"],
-            "Community Development": ["Community gardening", "Gardening and landscaping", "Community organizing"],
-            "Criminal Justice & Law": ["Abuse prevention", "Domestic violence", "Equal justice"],
-            "Democracy": ["Civic participation", "Voter education and registration", "Elections"],
-            "Economic Development & Mobility": ["Digital divide", "Financial services", "Community development finance"],
-            "Education": ["Colleges and universities", "Early childhood education", "Adult education"],
-            "Environmental Sustainability": ["Climate change", "Climate change adaptation", "Air quality"],
-            "Health Care": ["Health equity", "Disease management", "Mental health care"]
+            "Agriculture & Food Systems": ["Food security", "Community food systems", "Food sovereignty", "Food waste", "Sustainable agriculture"],
+            "Arts": ["Artist's services", "Arts administration", "Museums", "Performing arts", "Dance"],
+            "Business & Industry": ["Business promotion", "Construction", "Corporate responsibility", "Entrepreneurship", "Social entrepreneurship"],
+            "COVID-19 and SARS Coronavirus 2": ["Care and Compassion", "Creating Companionship", "Electronic Empathy"],
+            "Community Development": ["Pedestrian-oriented development", "Community gardening", "Community improvement", "Community organizing"],
+            "Criminal Justice & Law": ["Abuse prevention", "Bullying", "Domestic violence", "Equal justice"],
+            "Culture": ["Building cultural awareness", "Preserving indigenous knowledge", "Folk and indigenous arts", "History"],
+            "Democracy": ["Civic participation", "Civics for youth", "Civics education", "Elections", "Voter education"],
+            "Economic Development & Mobility": ["Digital divide", "Financial services", "Community development finance", "Insurance counseling"],
+            "Education": ["Adult education", "Arts education", "Colleges and universities", "Community colleges", "Early childhood education"],
+            "Environmental Sustainability": ["Climate change", "Climate change adaptation", "Air quality", "Animal welfare"],
+            "Government Operations": ["Democracy and civil society", "Government regulation", "Immigration and naturalization"],
+            "Health Care": ["Caregivers", "Disease management", "Emergency services", "Health equity", "Community health workers"],
+            "Human & Social Services": ["Adult peer mentoring", "Social services", "Caregiver services", "Child welfare"],
+            "Human Rights": ["Diversity relations", "Economic justice", "Ending slavery", "Environmental rights"],
+            "Mental Health Care": ["Addiction treatment", "Alcohol use disorders", "Opioids", "Substance abuse prevention"],
+            "North Carolina Hurricane Helene climate disaster": ["NC Helene Communications", "NC Helene Coping and Adapting", "NC Helene Distribution"],
+            "Philanthropy": ["Foundations", "Fundraising", "Nonprofits", "Venture philanthropy", "Volunteer opportunities"],
+            "Public Information & Communications": ["Applications software", "Data analysis", "Data security", "Geographic information systems"],
+            "Public Safety & Disaster Management": ["Accessibility design", "Consumer protection", "Drug safety", "Disaster preparedness"],
+            "Religion": ["Buddhism", "Christianity", "Hinduism", "Interfaith", "Islam"],
+            "Science & Technology": ["Assistive technology", "Biology", "Genetics", "Computer science", "Artificial intelligence"],
+            "Social Sciences & Humanities": ["Economics", "Interdisciplinary studies", "AAPI studies", "Black and African American Studies"],
+            "Sports & Recreation": ["Community recreation", "Parks", "Sports", "Adaptive sports", "School athletics"]
         };
 
         // Populate options dynamically from backend
@@ -108,9 +192,19 @@
                 const response = await fetch(`${API_BASE_URL}/api/issues`);
                 if (!response.ok) throw new Error('API unreachable');
                 const data = await response.json();
+                
+                // Show online banner
+                connectionBanner.className = 'connection-banner online';
+                connectionBanner.querySelector('.banner-text').innerHTML = '<strong>Backend Connected:</strong> Custom schedule and preferences will sync live.';
+                
                 populateDropdown(data);
             } catch (err) {
-                console.warn('Backend API offline. Using fallback issue tree.', err);
+                console.warn('Backend API offline. Using fallback complete issue tree.', err);
+                
+                // Keep offline warning
+                connectionBanner.className = 'connection-banner offline';
+                connectionBanner.querySelector('.banner-text').innerHTML = '<strong>API Server Offline:</strong> Live signup requires starting backend (`.venv/bin/python src/main.py`).';
+                
                 populateDropdown(FALLBACK_ISSUES);
             }
         }
@@ -119,17 +213,16 @@
             issueAreaSelect.innerHTML = '<option value="" disabled selected>Choose a topic...</option>';
             
             for (const [mainCat, subs] of Object.entries(categories)) {
-                // Create an optgroup for the main category
                 const optGroup = document.createElement('optgroup');
                 optGroup.label = mainCat;
 
-                // Add main category itself as an option (highly recommended)
+                // Add main category option
                 const mainOpt = document.createElement('option');
                 mainOpt.value = mainCat;
                 mainOpt.textContent = `★ ${mainCat} (All)`;
                 optGroup.appendChild(mainOpt);
 
-                // Add each subcategory
+                // Add each subcategory option
                 subs.forEach(sub => {
                     const opt = document.createElement('option');
                     opt.value = sub;
@@ -145,7 +238,6 @@
         signupForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            // UI Loading state
             submitBtn.disabled = true;
             submitBtn.classList.add('loading');
             statusMessage.className = 'status-message hidden';
@@ -153,7 +245,9 @@
             const payload = {
                 email: document.getElementById('email').value,
                 issue_area: issueAreaSelect.value,
-                cadence: document.getElementById('cadence').value
+                cadence: cadenceSelect.value,
+                preferred_day: preferredDaySelect.disabled ? 'Monday' : preferredDaySelect.value,
+                preferred_hour: parseInt(document.getElementById('preferred-hour').value, 10)
             };
 
             try {
@@ -168,14 +262,18 @@
                 const result = await response.json();
 
                 if (response.ok) {
-                    showStatus('success', 'Subscription Activated!', `Digest scheduled on a ${payload.cadence} cadence for "${payload.issue_area}".`);
+                    const timingInfo = payload.cadence === 'daily' 
+                        ? `every day at ${payload.preferred_hour}:00` 
+                        : `every ${payload.preferred_day} at ${payload.preferred_hour}:00`;
+                    
+                    showStatus('success', 'Subscription Activated!', `Custom digest scheduled for ${payload.email} (${timingInfo}) for "${payload.issue_area}".`);
                     signupForm.reset();
                     issueAreaSelect.value = payload.issue_area; // Keep the selected category
                 } else {
                     throw new Error(result.detail || 'An unexpected error occurred.');
                 }
             } catch (err) {
-                showStatus('error', 'Signup Failed', err.message || 'Could not connect to the automation backend. Make sure your Python API server is running.');
+                showStatus('error', 'Signup Failed', err.message || 'Could not connect to the API backend. Start the backend with: .venv/bin/python src/main.py');
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.classList.remove('loading');

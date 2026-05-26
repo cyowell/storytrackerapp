@@ -46,9 +46,12 @@ def test_database_subscriber_management(temp_db):
 
 def test_cadence_due_logic(temp_db):
     """Test the subscriber cadence due date calculations"""
-    # Add a subscriber
-    temp_db.add_subscriber("daily@example.com", "Health Care", "daily")
-    temp_db.add_subscriber("weekly@example.com", "Education", "weekly")
+    current_day = datetime.now().strftime('%A')
+    current_hour = datetime.now().hour
+    
+    # Add a subscriber with timing preferences matching current moment to guarantee they are due
+    temp_db.add_subscriber("daily@example.com", "Health Care", "daily", preferred_day=current_day, preferred_hour=current_hour)
+    temp_db.add_subscriber("weekly@example.com", "Education", "weekly", preferred_day=current_day, preferred_hour=current_hour)
     
     # Assert both are due initially (since last_sent is None)
     due = temp_db.get_subscribers_due()

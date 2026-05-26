@@ -17,19 +17,32 @@ class DatabaseManager:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        # Subscribers table - tracks email list, issue area, cadence, and last sent timestamp
+        # Subscribers table - tracks email list, issue area, cadence, delivery preferences, and last sent timestamp
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS subscribers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT UNIQUE NOT NULL,
                 issue_area TEXT NOT NULL,
                 cadence TEXT NOT NULL DEFAULT 'weekly',
+                preferred_day TEXT DEFAULT 'Monday',
+                preferred_hour INTEGER DEFAULT 9,
                 last_sent TIMESTAMP,
                 active BOOLEAN DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        # Safe migration if table already exists
+        try:
+            cursor.execute("ALTER TABLE subscribers ADD COLUMN preferred_day TEXT DEFAULT 'Monday'")
+        except sqlite3.OperationalError:
+            pass
+            
+        try:
+            cursor.execute("ALTER TABLE subscribers ADD COLUMN preferred_hour INTEGER DEFAULT 9")
+        except sqlite3.OperationalError:
+            pass
 
         # Articles table - tracks all scraped articles with unique identifiers
         cursor.execute('''
@@ -118,17 +131,17 @@ class DatabaseManager:
         return sqlite3.connect(self.db_path)
 
     # SUBSCRIBER MANAGEMENT
-    def add_subscriber(self, email: str, issue_area: str, cadence: str = 'weekly') -> bool:
-        """Add new subscriber or update existing one"""
+    def add_subscriber(self, email: str, issue_area: str, cadence: str = 'weekly', preferred_day: str = 'Monday', preferred_hour: int = 9) -> bool:
+        """Add new subscriber or update existing one with timing preferences"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
         try:
             cursor.execute('''
                 INSERT OR REPLACE INTO subscribers 
-                (email, issue_area, cadence, active, updated_at)
-                VALUES (?, ?, ?, 1, ?)
-            ''', (email, issue_area, cadence, datetime.now()))
+                (email, issue_area, cadence, preferred_day, preferred_hour, active, updated_at)
+                VALUES (?, ?, ?, ?, ?, 1, ?)
+            ''', (email, issue_area, cadence, preferred_day, preferred_hour, datetime.now()))
 
             conn.commit()
             return True
@@ -144,7 +157,7 @@ class DatabaseManager:
         cursor = conn.cursor()
 
         cursor.execute('''
-            SELECT id, email, issue_area, cadence, last_sent, active, created_at, updated_at
+            SELECT id, email, issue_area, cadence, preferred_day, preferred_hour, last_sent, active, created_at, updated_at
             FROM subscribers WHERE email = ?
         ''', (email,))
 
@@ -157,10 +170,12 @@ class DatabaseManager:
                 'email': row[1],
                 'issue_area': row[2],
                 'cadence': row[3],
-                'last_sent': row[4],
-                'active': bool(row[5]),
-                'created_at': row[6],
-                'updated_at': row[7]
+                'preferred_day': row[4],
+                'preferred_hour': row[5],
+                'last_sent': row[6],
+                'active': bool(row[7]),
+                'created_at': row[8],
+                'updated_at': row[9]
             }
         return None
 
@@ -170,7 +185,7 @@ class DatabaseManager:
         cursor = conn.cursor()
 
         cursor.execute('''
-            SELECT id, email, issue_area, cadence, last_sent, created_at, updated_at
+            SELECT id, email, issue_area, cadence, preferred_day, preferred_hour, last_sent, created_at, updated_at
             FROM subscribers WHERE active = 1
             ORDER BY email
         ''')
@@ -183,9 +198,11 @@ class DatabaseManager:
             'email': row[1],
             'issue_area': row[2],
             'cadence': row[3],
-            'last_sent': row[4],
-            'created_at': row[5],
-            'updated_at': row[6]
+            'preferred_day': row[4],
+            'preferred_hour': row[5],
+            'last_sent': row[6],
+            'created_at': row[7],
+            'updated_at': row[8]
         } for row in rows]
 
     def deactivate_subscriber(self, email: str) -> bool:
@@ -218,12 +235,12 @@ class DatabaseManager:
             conn.close()
 
     def get_subscribers_due(self) -> List[Dict]:
-        """Get all subscribers who are due for an email based on their cadence"""
+        """Get all subscribers who are due for an email based on their cadence, preferred day, and preferred hour"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT id, email, issue_area, cadence, last_sent
+            SELECT id, email, issue_area, cadence, preferred_day, preferred_hour, last_sent
             FROM subscribers WHERE active = 1
         ''')
         rows = cursor.fetchall()
@@ -231,10 +248,21 @@ class DatabaseManager:
         
         due_subscribers = []
         now = datetime.now()
+        current_day_str = now.strftime('%A')  # 'Monday', 'Tuesday', etc.
+        current_hour = now.hour
         
         for row in rows:
-            sub_id, email, issue_area, cadence, last_sent_str = row
+            sub_id, email, issue_area, cadence, preferred_day, preferred_hour, last_sent_str = row
             
+            # Check hour timing: only deliver during the preferred hour
+            if current_hour != preferred_hour:
+                continue
+                
+            # Check day timing for weekly/biweekly cadences
+            if cadence in ['weekly', 'biweekly']:
+                if preferred_day and preferred_day.lower() != current_day_str.lower():
+                    continue
+                    
             if not last_sent_str:
                 # Never sent before, so it's due
                 due_subscribers.append({
@@ -242,6 +270,8 @@ class DatabaseManager:
                     'email': email,
                     'issue_area': issue_area,
                     'cadence': cadence,
+                    'preferred_day': preferred_day,
+                    'preferred_hour': preferred_hour,
                     'last_sent': None
                 })
                 continue
@@ -255,21 +285,23 @@ class DatabaseManager:
                     'email': email,
                     'issue_area': issue_area,
                     'cadence': cadence,
+                    'preferred_day': preferred_day,
+                    'preferred_hour': preferred_hour,
                     'last_sent': None
                 })
                 continue
                 
             is_due = False
             if cadence == 'daily':
-                is_due = now - last_sent >= timedelta(days=1)
+                is_due = now - last_sent >= timedelta(hours=23)  # Allow slight timing offset
             elif cadence == 'weekly':
-                is_due = now - last_sent >= timedelta(weeks=1)
+                is_due = now - last_sent >= timedelta(days=6)
             elif cadence == 'biweekly':
-                is_due = now - last_sent >= timedelta(weeks=2)
+                is_due = now - last_sent >= timedelta(days=13)
             elif cadence == 'monthly':
-                is_due = now - last_sent >= timedelta(days=30)
-            else: # Default to weekly if invalid
-                is_due = now - last_sent >= timedelta(weeks=1)
+                is_due = now - last_sent >= timedelta(days=27)
+            else: 
+                is_due = now - last_sent >= timedelta(days=6)
                 
             if is_due:
                 due_subscribers.append({
@@ -277,6 +309,8 @@ class DatabaseManager:
                     'email': email,
                     'issue_area': issue_area,
                     'cadence': cadence,
+                    'preferred_day': preferred_day,
+                    'preferred_hour': preferred_hour,
                     'last_sent': last_sent
                 })
                 

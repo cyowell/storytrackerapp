@@ -56,6 +56,8 @@ class Subscriber:
     email: str
     issue_area: str
     cadence: str = 'weekly'
+    preferred_day: str = 'Monday'
+    preferred_hour: int = 9
     active: bool = True
     id: Optional[int] = None
     last_sent: Optional[datetime] = None
@@ -74,6 +76,8 @@ class Subscriber:
             'email': self.email,
             'issue_area': self.issue_area,
             'cadence': self.cadence,
+            'preferred_day': self.preferred_day,
+            'preferred_hour': self.preferred_hour,
             'last_sent': self.last_sent.isoformat() if self.last_sent else None,
             'active': self.active,
             'created_at': self.created_at.isoformat() if self.created_at else None,
@@ -98,6 +102,8 @@ class Subscriber:
             email=data['email'],
             issue_area=data['issue_area'],
             cadence=data.get('cadence', 'weekly'),
+            preferred_day=data.get('preferred_day', 'Monday'),
+            preferred_hour=data.get('preferred_hour', 9),
             active=data.get('active', True),
             id=data.get('id'),
             last_sent=last_sent,
