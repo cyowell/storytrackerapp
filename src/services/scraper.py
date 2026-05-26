@@ -35,13 +35,12 @@ class SolutionsStoryScraper:
         Returns list of Article objects
         """
         try:
-            # Build search request for specific issue area
+            # Build search request for specific issue area using GET parameters
             if issue_area and issue_area != 'All Issues':
-                search_params = {
-                    'issue-areas[]': issue_area,
-                    'search_stories': 'Search'
-                }
-                response = self.session.post(self.base_url, data=search_params, timeout=15)
+                import urllib.parse
+                quoted_issue = urllib.parse.quote(issue_area)
+                url = f"{self.base_url}?issue-areas%5B%5D={quoted_issue}&page=1&search_stories=Search"
+                response = self.session.get(url, timeout=15)
             else:
                 response = self.session.get(self.base_url, timeout=15)
 
@@ -113,20 +112,21 @@ class SolutionsStoryScraper:
         # Look for story links - adjust selectors based on actual site structure
         story_links = []
 
-        # Try multiple selectors to find story links
+        # Try multiple selectors to find story links including new '/stories/' path
         selectors = [
+            'a[href*="/stories/"]',
             'a[href*="/story/"]',
+            '.story__title a',
             '.story-title a',
             '.story-link',
-            'h3 a',
-            'h2 a'
+            'h1 a',
+            'h3 a'
         ]
 
         for selector in selectors:
             links = soup.select(selector)
             if links:
                 story_links.extend(links)
-                break
 
         # Remove duplicates while preserving order
         seen_urls = set()
@@ -176,31 +176,39 @@ class SolutionsStoryScraper:
 
             soup = BeautifulSoup(response.content, 'html.parser')
 
-            # Look for original article link - adjust selectors based on actual site
             original_url = None
             outlet = None
 
-            # Try various selectors for the original article link
-            selectors = [
-                'a[href*="://"]',  # External links
-                '.original-link a',
-                '.source-link a',
-                '.article-link a'
-            ]
-
-            for selector in selectors:
-                links = soup.select(selector)
-                for link in links:
-                    href = link.get('href', '')
-                    if href and not href.startswith(self.base_url) and '://' in href:
-                        original_url = href
-                        # Try to extract outlet from URL or link text
-                        outlet = self._extract_outlet_from_url(href) or link.get_text().strip()
-                        break
-                if original_url:
+            # 1. Target "Go to Original Story" link explicitly
+            for link in soup.find_all('a'):
+                text = link.get_text(strip=True)
+                if 'Go to Original Story' in text:
+                    original_url = link.get('href', '')
+                    # Try to parse outlet from sibling/meta tags or url
+                    outlet = self._extract_outlet_from_url(original_url)
                     break
 
-            # Fallback: look for outlet in the page content
+            # 2. Fallback to old selectors if not found
+            if not original_url:
+                selectors = [
+                    'a[href*="://"]',  # External links
+                    '.original-link a',
+                    '.source-link a',
+                    '.article-link a'
+                ]
+
+                for selector in selectors:
+                    links = soup.select(selector)
+                    for link in links:
+                        href = link.get('href', '')
+                        if href and not href.startswith(self.base_url) and '://' in href:
+                            original_url = href
+                            outlet = self._extract_outlet_from_url(href) or link.get_text().strip()
+                            break
+                    if original_url:
+                        break
+
+            # Fallback for outlet: Look at text content or inline meta info
             if not outlet:
                 outlet_selectors = [
                     '.outlet',

@@ -17,14 +17,14 @@ class DatabaseManager:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        # Subscribers table - replaces the old single-user approach
+        # Subscribers table - tracks email list, issue area, cadence, and last sent timestamp
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS subscribers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT UNIQUE NOT NULL,
-                issue_area_1 TEXT NOT NULL,
-                issue_area_2 TEXT NOT NULL,
-                issue_area_3 TEXT NOT NULL,
+                issue_area TEXT NOT NULL,
+                cadence TEXT NOT NULL DEFAULT 'weekly',
+                last_sent TIMESTAMP,
                 active BOOLEAN DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -118,7 +118,7 @@ class DatabaseManager:
         return sqlite3.connect(self.db_path)
 
     # SUBSCRIBER MANAGEMENT
-    def add_subscriber(self, email: str, issue1: str, issue2: str, issue3: str) -> bool:
+    def add_subscriber(self, email: str, issue_area: str, cadence: str = 'weekly') -> bool:
         """Add new subscriber or update existing one"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -126,9 +126,9 @@ class DatabaseManager:
         try:
             cursor.execute('''
                 INSERT OR REPLACE INTO subscribers 
-                (email, issue_area_1, issue_area_2, issue_area_3, updated_at)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (email, issue1, issue2, issue3, datetime.now()))
+                (email, issue_area, cadence, active, updated_at)
+                VALUES (?, ?, ?, 1, ?)
+            ''', (email, issue_area, cadence, datetime.now()))
 
             conn.commit()
             return True
@@ -144,7 +144,7 @@ class DatabaseManager:
         cursor = conn.cursor()
 
         cursor.execute('''
-            SELECT id, email, issue_area_1, issue_area_2, issue_area_3, active, created_at, updated_at
+            SELECT id, email, issue_area, cadence, last_sent, active, created_at, updated_at
             FROM subscribers WHERE email = ?
         ''', (email,))
 
@@ -155,9 +155,9 @@ class DatabaseManager:
             return {
                 'id': row[0],
                 'email': row[1],
-                'issue_area_1': row[2],
-                'issue_area_2': row[3],
-                'issue_area_3': row[4],
+                'issue_area': row[2],
+                'cadence': row[3],
+                'last_sent': row[4],
                 'active': bool(row[5]),
                 'created_at': row[6],
                 'updated_at': row[7]
@@ -170,7 +170,7 @@ class DatabaseManager:
         cursor = conn.cursor()
 
         cursor.execute('''
-            SELECT id, email, issue_area_1, issue_area_2, issue_area_3, created_at, updated_at
+            SELECT id, email, issue_area, cadence, last_sent, created_at, updated_at
             FROM subscribers WHERE active = 1
             ORDER BY email
         ''')
@@ -181,9 +181,9 @@ class DatabaseManager:
         return [{
             'id': row[0],
             'email': row[1],
-            'issue_area_1': row[2],
-            'issue_area_2': row[3],
-            'issue_area_3': row[4],
+            'issue_area': row[2],
+            'cadence': row[3],
+            'last_sent': row[4],
             'created_at': row[5],
             'updated_at': row[6]
         } for row in rows]
@@ -203,8 +203,84 @@ class DatabaseManager:
         except Exception as e:
             print(f"Error deactivating subscriber: {e}")
             return False
+    def update_subscriber_last_sent(self, subscriber_id: int):
+        """Update last_sent timestamp for subscriber"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                UPDATE subscribers SET last_sent = ?, updated_at = ? WHERE id = ?
+            ''', (datetime.now().isoformat(), datetime.now().isoformat(), subscriber_id))
+            conn.commit()
+        except Exception as e:
+            print(f"Error updating last_sent: {e}")
         finally:
             conn.close()
+
+    def get_subscribers_due(self) -> List[Dict]:
+        """Get all subscribers who are due for an email based on their cadence"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, email, issue_area, cadence, last_sent
+            FROM subscribers WHERE active = 1
+        ''')
+        rows = cursor.fetchall()
+        conn.close()
+        
+        due_subscribers = []
+        now = datetime.now()
+        
+        for row in rows:
+            sub_id, email, issue_area, cadence, last_sent_str = row
+            
+            if not last_sent_str:
+                # Never sent before, so it's due
+                due_subscribers.append({
+                    'id': sub_id,
+                    'email': email,
+                    'issue_area': issue_area,
+                    'cadence': cadence,
+                    'last_sent': None
+                })
+                continue
+                
+            try:
+                last_sent = datetime.fromisoformat(last_sent_str)
+            except ValueError:
+                # If there's a parsing error, assume due
+                due_subscribers.append({
+                    'id': sub_id,
+                    'email': email,
+                    'issue_area': issue_area,
+                    'cadence': cadence,
+                    'last_sent': None
+                })
+                continue
+                
+            is_due = False
+            if cadence == 'daily':
+                is_due = now - last_sent >= timedelta(days=1)
+            elif cadence == 'weekly':
+                is_due = now - last_sent >= timedelta(weeks=1)
+            elif cadence == 'biweekly':
+                is_due = now - last_sent >= timedelta(weeks=2)
+            elif cadence == 'monthly':
+                is_due = now - last_sent >= timedelta(days=30)
+            else: # Default to weekly if invalid
+                is_due = now - last_sent >= timedelta(weeks=1)
+                
+            if is_due:
+                due_subscribers.append({
+                    'id': sub_id,
+                    'email': email,
+                    'issue_area': issue_area,
+                    'cadence': cadence,
+                    'last_sent': last_sent
+                })
+                
+        return due_subscribers
 
     # ARTICLE MANAGEMENT
     def add_article(self, title: str, url: str, outlet: str, issue_area: str) -> Optional[int]:

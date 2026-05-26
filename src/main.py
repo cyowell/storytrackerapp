@@ -1,84 +1,166 @@
-"""
-Story Tracker App - Main Entry Point
-
-This application manages a newsletter system for solutions journalism articles.
-It provides both a public subscription interface and an admin dashboard.
-"""
-
-import streamlit as st
-import sys
 import os
+import sys
 from pathlib import Path
+from typing import Dict, List, Optional
+from fastapi import FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, EmailStr
 
-# Add src directory to path for imports
-src_path = Path(__file__).parent
-sys.path.insert(0, str(src_path))
-
-# Add parent directory to path so we can import from storytrackerapp
-parent_path = src_path.parent
-sys.path.insert(0, str(parent_path))
+# Add project root to python path to allow absolute imports
+sys.path.append(str(Path(__file__).parent.parent))
 
 from src.models.database import DatabaseManager
-from src.screens.subscription import SubscriptionScreen
-from src.screens.admin import AdminDashboard
+
+app = FastAPI(
+    title="Story Tracker Newsletter API Backend",
+    description="Secure backend to collect subscription preferences and provide solutions journalism issue areas.",
+    version="2.0.0"
+)
+
+# Configure CORS so your static site on GitHub Pages can securely communicate with this API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins. For production, you can lock this to your GitHub Pages URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Initialize database
+db = DatabaseManager()
+
+# Pydantic schema for subscription input validation
+class SubscriptionRequest(BaseModel):
+    email: EmailStr
+    issue_area: str
+    cadence: str = "weekly"  # "daily", "weekly", "biweekly", "monthly"
 
 
-def main():
-    """Main application entry point"""
+# Available issue areas and subcategories tree matching the portal structure
+ISSUE_AREAS_TREE = {
+    "Agriculture & Food Systems": [
+        "Food security", "Community food systems", "Food sovereignty", "Food waste", "Sustainable agriculture"
+    ],
+    "Arts": [
+        "Artist's services", "Arts administration and services", "Museums", "Performing arts", "Dance"
+    ],
+    "Business & Industry": [
+        "Business promotion", "Construction and real estate", "Corporate social responsibility", "Entrepreneurship", "Social entrepreneurship"
+    ],
+    "COVID-19 and SARS Coronavirus 2": [
+        "Care and Compassion", "Creating Companionship", "Electronic Empathy", "Making Grieving Accessible", "Making It Light"
+    ],
+    "Community Development": [
+        "Bicycling and pedestrian-oriented development", "Community beautification", "Gardening and landscaping", "Community improvement", "Community organizing"
+    ],
+    "Criminal Justice & Law": [
+        "Abuse prevention", "Bullying", "Child abuse", "Domestic, intimate partner and gender-based violence", "Elder abuse"
+    ],
+    "Culture": [
+        "Building cultural awareness", "Preserving indigenous cultural knowledge", "Folk, ethnic and indigenous arts", "History", "Language acquisition and linguistics"
+    ],
+    "Democracy": [
+        "Civic participation", "Civics for youth", "Civics education", "Elections", "Voter education and registration"
+    ],
+    "Economic Development & Mobility": [
+        "Digital divide", "Financial services", "Banking, credit unions and investment services", "Community development finance", "Insurance and financial counseling"
+    ],
+    "Education": [
+        "Adult education", "Arts education", "Colleges and universities", "Community colleges", "Early childhood education"
+    ],
+    "Environmental Sustainability": [
+        "Air quality and air pollution", "Animal welfare", "Animal companionship", "Climate change", "Climate change adaptation"
+    ],
+    "Government Operations": [
+        "Democracy and civil society development", "Government regulation", "Government surveillance systems", "Immigration and naturalization", "International development"
+    ],
+    "Health Care": [
+        "Caregivers", "Disease treatment and management", "Emergency medical services", "Health care management and administration", "Health equity"
+    ],
+    "Human & Social Services": [
+        "Adult peer mentoring", "Adult social services", "Caregiver and respite services", "Child care and early childhood development", "Child welfare"
+    ],
+    "Human Rights": [
+        "Diversity and intergroup relations", "Economic justice", "Ending slavery and human trafficking", "Environmental rights and justice", "Environmental racism"
+    ],
+    "Mental Health Care": [
+        "Addiction treatment services", "Alcohol use disorders", "Opioids", "Substance abuse prevention and treatment programs", "Crisis support services"
+    ],
+    "North Carolina Hurricane Helene climate disaster": [
+        "NC Helene Communications & Information Management", "NC Helene Coping and Adapting", "NC Helene Distribution of Immediate Services"
+    ],
+    "Philanthropy": [
+        "Foundations", "Fundraising", "Nonprofits", "Venture philanthropy", "Volunteer opportunities"
+    ],
+    "Public Information & Communications": [
+        "Applications software", "Data analysis and database management software", "Data and information security", "Geographic information systems", "Interactive games and simulation software"
+    ],
+    "Public Safety & Disaster Management": [
+        "Accessibility and universal design", "Consumer protection", "Drug safety", "Food safety", "Disasters and emergency management"
+    ],
+    "Religion": [
+        "Buddhism", "Christianity", "Hinduism", "Interfaith", "Islam"
+    ],
+    "Science & Technology": [
+        "Assistive technology and software", "Biology", "Genetics and stem cell therapy", "Computer science", "Algorithms, artificial intelligence and machine learning"
+    ],
+    "Social Sciences & Humanities": [
+        "Economics", "Interdisciplinary studies", "Asian American and Pacific Islander studies", "Black and African American Studies", "Gender studies"
+    ],
+    "Sports & Recreation": [
+        "Community recreation", "Parks", "Sports", "Adaptive sports for people with disabilities", "School athletics"
+    ]
+}
 
-    # Initialize database
-    db = DatabaseManager()
 
-    # Check if this is admin mode via URL parameter
-    query_params = st.experimental_get_query_params()
-    is_admin = query_params.get('admin', [False])[0]
-
-    # Also check for admin password in environment or session state
-    admin_password = os.getenv('ADMIN_PASSWORD', 'admin123')
-
-    if is_admin or st.session_state.get('admin_authenticated', False):
-        if not st.session_state.get('admin_authenticated', False):
-            # Show admin login
-            _show_admin_login(admin_password)
-        else:
-            # Show admin dashboard
-            admin_dashboard = AdminDashboard(db)
-            admin_dashboard.render()
-    else:
-        # Show public subscription interface
-        subscription_screen = SubscriptionScreen(db)
-        subscription_screen.render()
+@app.get("/health", status_code=status.HTTP_200_OK)
+def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy", "service": "Story Tracker API Backend"}
 
 
-def _show_admin_login(correct_password: str):
-    """Show admin login form"""
-    st.set_page_config(
-        page_title="Admin Login",
-        page_icon="🔐",
-        layout="centered"
+@app.get("/api/issues", response_model=Dict[str, List[str]])
+def get_issue_areas():
+    """Returns all 24 categorized issue areas and subcategories"""
+    return ISSUE_AREAS_TREE
+
+
+@app.post("/api/subscribe", status_code=status.HTTP_201_CREATED)
+def subscribe_user(payload: SubscriptionRequest):
+    """Exposes endpoint for signup form submissions"""
+    # 1. Validate cadence
+    valid_cadences = ["daily", "weekly", "biweekly", "monthly"]
+    if payload.cadence.lower() not in valid_cadences:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid cadence. Must be one of {valid_cadences}"
+        )
+
+    # 2. Store in sqlite database
+    success = db.add_subscriber(
+        email=payload.email,
+        issue_area=payload.issue_area,
+        cadence=payload.cadence.lower()
     )
 
-    st.title("🔐 Admin Access")
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to record preference selection in the database."
+        )
 
-    with st.form("admin_login"):
-        password = st.text_input("Admin Password", type="password")
-        submitted = st.form_submit_button("Login")
-
-        if submitted:
-            if password == correct_password:
-                st.session_state['admin_authenticated'] = True
-                st.success("✅ Access granted")
-                st.rerun()
-            else:
-                st.error("❌ Invalid password")
-
-    st.markdown("---")
-    st.markdown("### Public Access")
-    if st.button("🔙 Back to Newsletter Signup"):
-        # Clear admin parameter by setting empty query params
-        st.query_params.clear()
-        st.rerun()
+    return {
+        "success": True,
+        "message": f"Successfully registered preference subscription list for {payload.email}",
+        "data": {
+            "email": payload.email,
+            "issue_area": payload.issue_area,
+            "cadence": payload.cadence
+        }
+    }
 
 
 if __name__ == "__main__":
-    main()
+    import uvicorn
+    # Start uvicorn server locally on port 8000
+    uvicorn.run("src.main:app", host="0.0.0.0", port=8000, reload=True)

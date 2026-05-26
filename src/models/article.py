@@ -54,27 +54,27 @@ class Article:
 class Subscriber:
     """Data class representing a subscriber"""
     email: str
-    issue_area_1: str
-    issue_area_2: str
-    issue_area_3: str
+    issue_area: str
+    cadence: str = 'weekly'
     active: bool = True
     id: Optional[int] = None
+    last_sent: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
     @property
     def issue_areas(self) -> List[str]:
         """Get list of subscriber's issue areas"""
-        return [self.issue_area_1, self.issue_area_2, self.issue_area_3]
+        return [self.issue_area]
 
     def to_dict(self) -> Dict:
         """Convert to dictionary for serialization"""
         return {
             'id': self.id,
             'email': self.email,
-            'issue_area_1': self.issue_area_1,
-            'issue_area_2': self.issue_area_2,
-            'issue_area_3': self.issue_area_3,
+            'issue_area': self.issue_area,
+            'cadence': self.cadence,
+            'last_sent': self.last_sent.isoformat() if self.last_sent else None,
             'active': self.active,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
@@ -85,19 +85,22 @@ class Subscriber:
         """Create Subscriber from dictionary"""
         created_at = None
         updated_at = None
+        last_sent = None
 
         if data.get('created_at'):
             created_at = datetime.fromisoformat(data['created_at'])
         if data.get('updated_at'):
             updated_at = datetime.fromisoformat(data['updated_at'])
+        if data.get('last_sent'):
+            last_sent = datetime.fromisoformat(data['last_sent'])
 
         return cls(
             email=data['email'],
-            issue_area_1=data['issue_area_1'],
-            issue_area_2=data['issue_area_2'],
-            issue_area_3=data['issue_area_3'],
+            issue_area=data['issue_area'],
+            cadence=data.get('cadence', 'weekly'),
             active=data.get('active', True),
             id=data.get('id'),
+            last_sent=last_sent,
             created_at=created_at,
             updated_at=updated_at
         )
@@ -236,7 +239,8 @@ class ArticleSelector:
 
     def _get_articles_with_fallback(self, subscriber_id: int, primary_category: str, needed_count: int) -> List[
         Article]:
-        """Get articles for category with fallback logic"""
+        """Get articles for category with fallback logic, shuffing for random selection"""
+        import random
         all_categories = self.fallback_manager.get_all_related_categories(primary_category)
         selected_articles = []
 
@@ -248,6 +252,10 @@ class ArticleSelector:
 
         # First, try to get articles from primary category
         primary_articles = articles_by_category.get(primary_category, [])
+        
+        # Shuffle the primary articles to select a random subset
+        random.shuffle(primary_articles)
+        
         for article_data in primary_articles[:needed_count]:
             selected_articles.append(Article.from_dict(article_data))
 
@@ -260,6 +268,10 @@ class ArticleSelector:
                     break
 
                 fallback_articles = articles_by_category.get(fallback_category, [])
+                
+                # Shuffle fallback articles as well for random sampling
+                random.shuffle(fallback_articles)
+                
                 remaining_needed = needed_count - len(selected_articles)
 
                 for article_data in fallback_articles[:remaining_needed]:
