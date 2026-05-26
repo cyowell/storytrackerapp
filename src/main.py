@@ -1,5 +1,6 @@
 import os
 import sys
+import requests
 from pathlib import Path
 from typing import Dict, List, Optional
 from fastapi import FastAPI, HTTPException, status
@@ -127,6 +128,39 @@ def get_issue_areas():
     return ISSUE_AREAS_TREE
 
 
+def add_contact_to_resend_sojo(email: str) -> bool:
+    """Add a new subscriber contact to the Resend 'Sojo' segment"""
+    api_key = os.environ.get("RESEND_API_KEY")
+    if not api_key:
+        print("[Warning] RESEND_API_KEY not found in backend. Skipping live Resend segment registration.")
+        return False
+        
+    try:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "email": email,
+            "unsubscribed": False,
+            "segments": [
+                {
+                    "id": "b37b1fee-7f7b-4ab0-908d-fd4441efc363"
+                }
+            ]
+        }
+        response = requests.post("https://api.resend.com/contacts", json=payload, headers=headers, timeout=10)
+        if response.status_code in [200, 201]:
+            print(f"✓ Resend successfully added contact {email} to segment 'Sojo' (b37b1fee-7f7b-4ab0-908d-fd4441efc363)")
+            return True
+        else:
+            print(f"✗ Resend API segment registration error: {response.status_code} {response.text}")
+            return False
+    except Exception as e:
+        print(f"✗ Exception in Resend segment registration: {e}")
+        return False
+
+
 @app.post("/api/subscribe", status_code=status.HTTP_201_CREATED)
 def subscribe_user(payload: SubscriptionRequest):
     """Exposes endpoint for signup form submissions"""
@@ -152,6 +186,9 @@ def subscribe_user(payload: SubscriptionRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to record preference selection in the database."
         )
+
+    # 3. Synchronize contact directly with Resend "Sojo" segment list
+    add_contact_to_resend_sojo(payload.email)
 
     return {
         "success": True,
