@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solutions Story Tracker - Newsletter Signup</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="background-gradients">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <main class="signup-container">
+        <header class="header">
+            <div class="brand">
+                <span class="brand-accent">Solutions</span> Story Tracker
+            </div>
+            <h1>Automate Your Inspiration</h1>
+            <p class="subtitle">Set up customized email digests on your favorite solutions journalism topics, delivered exactly when you want them.</p>
+        </header>
+
+        <section class="card glass">
+            <form id="signup-form" class="form">
+                <div class="form-group">
+                    <label for="email">Email List or Recipient</label>
+                    <div class="input-wrapper">
+                        <input type="email" id="email" name="email" required placeholder="e.g., newsletter@yourdomain.edu">
+                        <span class="input-icon">✉️</span>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="issue-area">Select Issue Area / Subcategory</label>
+                        <div class="input-wrapper">
+                            <select id="issue-area" name="issue_area" required>
+                                <option value="" disabled selected>Loading topics...</option>
+                            </select>
+                            <span class="input-icon">🔍</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="cadence">Delivery Cadence</label>
+                        <div class="input-wrapper">
+                            <select id="cadence" name="cadence" required>
+                                <option value="weekly">Weekly (Every Tuesday)</option>
+                                <option value="daily">Daily (Early Morning)</option>
+                                <option value="biweekly">Bi-weekly (Every 2 Weeks)</option>
+                                <option value="monthly">Monthly Digest</option>
+                            </select>
+                            <span class="input-icon">📅</span>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" id="submit-btn" class="submit-btn">
+                    <span>Activate Newsletter Automation</span>
+                    <span class="btn-arrow">→</span>
+                </button>
+            </form>
+
+            <div id="status-message" class="status-message hidden">
+                <div class="status-icon"></div>
+                <div class="status-content">
+                    <h4 class="status-title"></h4>
+                    <p class="status-description"></p>
+                </div>
+            </div>
+        </section>
+
+        <footer class="footer">
+            <p>Powered by <strong>Resend</strong> & the <strong>Solutions Journalism Network</strong>.</p>
+            <p>Articles are scraped and randomly sampled from the latest search results.</p>
+        </footer>
+    </main>
+
+    <script>
+        // API Base URL - Update this to your deployed API backend address when hosting
+        const API_BASE_URL = 'http://localhost:8000';
+
+        const signupForm = document.getElementById('signup-form');
+        const submitBtn = document.getElementById('submit-btn');
+        const issueAreaSelect = document.getElementById('issue-area');
+        const statusMessage = document.getElementById('status-message');
+
+        // Fallback options in case API backend is offline/unreachable
+        const FALLBACK_ISSUES = {
+            "Agriculture & Food Systems": ["Food security", "Community food systems", "Food sovereignty"],
+            "Community Development": ["Community gardening", "Gardening and landscaping", "Community organizing"],
+            "Criminal Justice & Law": ["Abuse prevention", "Domestic violence", "Equal justice"],
+            "Democracy": ["Civic participation", "Voter education and registration", "Elections"],
+            "Economic Development & Mobility": ["Digital divide", "Financial services", "Community development finance"],
+            "Education": ["Colleges and universities", "Early childhood education", "Adult education"],
+            "Environmental Sustainability": ["Climate change", "Climate change adaptation", "Air quality"],
+            "Health Care": ["Health equity", "Disease management", "Mental health care"]
+        };
+
+        // Populate options dynamically from backend
+        async function loadIssueAreas() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/issues`);
+                if (!response.ok) throw new Error('API unreachable');
+                const data = await response.json();
+                populateDropdown(data);
+            } catch (err) {
+                console.warn('Backend API offline. Using fallback issue tree.', err);
+                populateDropdown(FALLBACK_ISSUES);
+            }
+        }
+
+        function populateDropdown(categories) {
+            issueAreaSelect.innerHTML = '<option value="" disabled selected>Choose a topic...</option>';
+            
+            for (const [mainCat, subs] of Object.entries(categories)) {
+                // Create an optgroup for the main category
+                const optGroup = document.createElement('optgroup');
+                optGroup.label = mainCat;
+
+                // Add main category itself as an option (highly recommended)
+                const mainOpt = document.createElement('option');
+                mainOpt.value = mainCat;
+                mainOpt.textContent = `★ ${mainCat} (All)`;
+                optGroup.appendChild(mainOpt);
+
+                // Add each subcategory
+                subs.forEach(sub => {
+                    const opt = document.createElement('option');
+                    opt.value = sub;
+                    opt.textContent = sub;
+                    optGroup.appendChild(opt);
+                });
+
+                issueAreaSelect.appendChild(optGroup);
+            }
+        }
+
+        // Handle Signup Submission
+        signupForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // UI Loading state
+            submitBtn.disabled = true;
+            submitBtn.classList.add('loading');
+            statusMessage.className = 'status-message hidden';
+
+            const payload = {
+                email: document.getElementById('email').value,
+                issue_area: issueAreaSelect.value,
+                cadence: document.getElementById('cadence').value
+            };
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/subscribe`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showStatus('success', 'Subscription Activated!', `Digest scheduled on a ${payload.cadence} cadence for "${payload.issue_area}".`);
+                    signupForm.reset();
+                    issueAreaSelect.value = payload.issue_area; // Keep the selected category
+                } else {
+                    throw new Error(result.detail || 'An unexpected error occurred.');
+                }
+            } catch (err) {
+                showStatus('error', 'Signup Failed', err.message || 'Could not connect to the automation backend. Make sure your Python API server is running.');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('loading');
+            }
+        });
+
+        function showStatus(type, title, desc) {
+            statusMessage.className = `status-message ${type}`;
+            statusMessage.querySelector('.status-title').textContent = title;
+            statusMessage.querySelector('.status-description').textContent = desc;
+            statusMessage.querySelector('.status-icon').textContent = type === 'success' ? '✓' : '✗';
+        }
+
+        // Initialize
+        loadIssueAreas();
+    </script>
+</body>
+</html>

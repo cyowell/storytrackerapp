@@ -7,6 +7,7 @@ story_tracker.db
 # Email output files
 emails_output/
 *.html
+!index.html
 
 # Python
 __pycache__/
